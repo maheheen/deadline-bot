@@ -16,31 +16,31 @@ DeadlineBot is two independent workflows sharing one Google Sheet as the source 
 
 ```mermaid
 flowchart TD
-    subgraph Intake["Task intake & classification (WhatsApp-triggered)"]
-        A[WhatsApp message in] --> B[Fetch pending tasks from Sheet]
-        B --> C[LLM: classify intent → strict JSON]
-        C --> D[Split into individual tasks/matches]
-        D --> E{Route by intent}
-        E -->|new_task| F[Log new task to Sheet]
-        E -->|submission_update| G[Mark task(s) submitted]
-        E -->|query| H[Answer from pending tasks]
-        E -->|unclear| I[Ask for clarification]
-        F --> J[Confirm on WhatsApp]
+    subgraph Intake["Task intake and classification, WhatsApp-triggered"]
+        A["WhatsApp message in"] --> B["Fetch pending tasks from Sheet"]
+        B --> C["LLM: classify intent, strict JSON"]
+        C --> D["Split into individual tasks/matches"]
+        D --> E{"Route by intent"}
+        E -->|new_task| F["Log new task to Sheet"]
+        E -->|submission_update| G["Mark tasks submitted"]
+        E -->|query| H["Answer from pending tasks"]
+        E -->|unclear| I["Ask for clarification"]
+        F --> J["Confirm on WhatsApp"]
         G --> J
     end
 
-    subgraph Reminder["Reminder engine (schedule-triggered, runs hourly)"]
-        K[Hourly schedule] --> L[Fetch pending tasks from Sheet]
-        L --> M[Decide who's due for a nag]
-        M --> N[Send WhatsApp template reminder]
-        N --> O[Stamp Last Reminder Sent]
+    subgraph Reminder["Reminder engine, schedule-triggered, runs hourly"]
+        K["Hourly schedule"] --> L["Fetch pending tasks from Sheet"]
+        L --> M["Decide who is due for a nag"]
+        M --> N["Send WhatsApp template reminder"]
+        N --> O["Stamp Last Reminder Sent"]
     end
 
-    B -. reads/writes .-> Sheet[(Google Sheet)]
-    F -. writes .-> Sheet
-    G -. writes .-> Sheet
-    L -. reads .-> Sheet
-    O -. writes .-> Sheet
+    B -. "reads/writes" .-> Sheet[("Google Sheet")]
+    F -. "writes" .-> Sheet
+    G -. "writes" .-> Sheet
+    L -. "reads" .-> Sheet
+    O -. "writes" .-> Sheet
 ```
 
 ### 1. Task intake & classification
