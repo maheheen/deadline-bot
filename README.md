@@ -12,36 +12,9 @@ University deadlines were scattered across Moodle and Colaraz, and I never remem
 
 ## How it works
 
-DeadlineBot is two independent workflows sharing one Google Sheet as the source of truth.
+DeadlineBot is two independent workflows sharing one Google Sheet as the source of truth — this is the actual n8n canvas:
 
-```mermaid
-flowchart TD
-    subgraph Intake["Task intake and classification, WhatsApp-triggered"]
-        A["WhatsApp message in"] --> B["Fetch pending tasks from Sheet"]
-        B --> C["LLM: classify intent, strict JSON"]
-        C --> D["Split into individual tasks/matches"]
-        D --> E{"Route by intent"}
-        E -->|new_task| F["Log new task to Sheet"]
-        E -->|submission_update| G["Mark tasks submitted"]
-        E -->|query| H["Answer from pending tasks"]
-        E -->|unclear| I["Ask for clarification"]
-        F --> J["Confirm on WhatsApp"]
-        G --> J
-    end
-
-    subgraph Reminder["Reminder engine, schedule-triggered, runs hourly"]
-        K["Hourly schedule"] --> L["Fetch pending tasks from Sheet"]
-        L --> M["Decide who is due for a nag"]
-        M --> N["Send WhatsApp template reminder"]
-        N --> O["Stamp Last Reminder Sent"]
-    end
-
-    B -. "reads/writes" .-> Sheet[("Google Sheet")]
-    F -. "writes" .-> Sheet
-    G -. "writes" .-> Sheet
-    L -. "reads" .-> Sheet
-    O -. "writes" .-> Sheet
-```
+![DeadlineBot n8n workflow: Task Intake & Classification pipeline on top, Deadline Reminder Scheduler below](docs/workflow-screenshot.jpeg)
 
 ### 1. Task intake & classification
 Every incoming WhatsApp message is sent, along with your current pending-task list, to **GPT-5 mini** with a strict system prompt. It classifies the message into exactly one of four intents and returns structured JSON:
