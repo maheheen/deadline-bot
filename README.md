@@ -2,7 +2,7 @@
 
 A WhatsApp bot that tracks your assignment deadlines the way you'd actually text a friend about them — no app to open, no dashboard to check. Text it a deadline, it logs it. Text it "done," it marks it off. It nags you automatically as due dates close in, with escalating urgency, and then shuts up once you've submitted.
 
-Built in [n8n](https://n8n.io/) on top of the WhatsApp Cloud API, OpenAI, and Google Sheets.
+Built in [n8n](https://n8n.io/) on top of the WhatsApp Cloud API, GPT-5 mini, and Google Sheets.
 
 > Curious about the build itself — the wrong turns, the invisible-checkbox bug that ate an evening, the Meta webhook fight? Read [`docs/build-story.md`](docs/build-story.md).
 
@@ -44,7 +44,7 @@ flowchart TD
 ```
 
 ### 1. Task intake & classification
-Every incoming WhatsApp message is sent, along with your current pending-task list, to an LLM with a strict system prompt. It classifies the message into exactly one of four intents and returns structured JSON:
+Every incoming WhatsApp message is sent, along with your current pending-task list, to **GPT-5 mini** with a strict system prompt. It classifies the message into exactly one of four intents and returns structured JSON:
 
 | Intent | What it means | What happens |
 |---|---|---|
@@ -72,7 +72,7 @@ Because proactive WhatsApp messages outside a 24-hour user-reply window must use
 
 - **[n8n](https://n8n.io/)** — workflow orchestration (self-hosted or cloud)
 - **[WhatsApp Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api)** (Meta) — inbound trigger + outbound messages/templates
-- **OpenAI** (via n8n's LangChain node) — intent classification with structured JSON output
+- **OpenAI GPT-5 mini** (via n8n's LangChain node) — intent classification with structured JSON output
 - **Google Sheets** — the entire database: one sheet, one row per task
 
 ## Repo contents
