@@ -8,7 +8,7 @@ Built in [n8n](https://n8n.io/) on top of the WhatsApp Cloud API, OpenAI, and Go
 
 ## Why
 
-University deadlines were scattered across Moodle and Google Classroom, and I never remembered to check either. I *do* check WhatsApp constantly — so instead of building another to-do app I'd forget to open, I built something that lives inside a habit I already have.
+University deadlines were scattered across Moodle and Colaraz, and I never remembered to check either. I *do* check WhatsApp constantly — so instead of building another to-do app I'd forget to open, I built something that lives inside a habit I already have.
 
 ## How it works
 
