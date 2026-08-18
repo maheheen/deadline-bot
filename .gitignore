@@ -1,0 +1,10 @@
+# Original workflow export contains real phone number / sheet ID — never commit this.
+# The sanitized, shareable copy lives in workflow/deadline-bot.json instead.
+/2. DeadlineBot.json
+
+# Duplicate of docs/build-story.md kept at root for convenience — not tracked to avoid drift.
+/deadline-bot-build-story.md
+
+# OS / editor junk
+.DS_Store
+Thumbs.db

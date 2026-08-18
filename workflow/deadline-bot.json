@@ -1,0 +1,981 @@
+{
+  "name": "DeadlineBot",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {}
+      },
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        48
+      ],
+      "id": "67654252-0ea6-41e3-a336-a9435522f5a9",
+      "name": "WhatsApp Trigger",
+      "webhookId": "847b30b0-63ff-49df-af07-b5eb11f7c676",
+      "credentials": {
+        "whatsAppTriggerApi": {
+          "id": "1g5XUbWfCnJgflFS",
+          "name": "WhatsApp OAuth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=You classify a WhatsApp message into exactly one JSON object. Return ONLY\nvalid JSON, no other text, no markdown fences.\n\nCurrent date/time (PKT): {{ $now.setZone('Asia/Karachi').toFormat(\"EEEE, dd LLL yyyy HH:mm\") }}\n\nPending tasks (row_number | Course Name | Assigned Task | Date):\n{{ $json.pendingTasksAsText }}\nDecide intent:\n- \"new_task\": message describes one or more new assignments/quizzes/projects\n  with due dates\n- \"submission_update\": message indicates something was turned in\n- \"query\": the user is asking a question about their deadlines (e.g. \"what's\n  due this week?\", \"when's my stats quiz?\") rather than adding a task or\n  reporting a submission\n- \"unclear\": none of the above fit confidently, or a submission_update can't\n  be matched to exactly one pending task\n\nFor new_task, return:\n{\n  \"intent\": \"new_task\",\n  \"tasks\": [\n    {\n      \"assigned_task\": \"Assignment\" | \"Quiz\" | \"Project\" | \"Presentation\" | \"Lab\" | \"Capstone\" | \"Exam\" | \"Paper\" | \"Report\" |,\n      \"course_name\": \"string\",\n      \"date\": \"ISO 8601 in Asia/Karachi, default 23:59 if no time given\",\n      \"guidelines\": \"string, empty if none\"\n    }\n  ]\n}\nIf the task type doesn't clearly match any of these, default to Assignment, default course name to 'Task to-do', and note the actual type in Guidelines.\nIf the message describes multiple tasks (e.g. several courses sharing one due date, or a list of separate deadlines), include one object per task in the array.\n\n\nFor submission_update, return:\n{\n  \"intent\": \"submission_update\",\n  \"matched_row_numbers\": [<row_number>, <row_number>, ...],\n  \"matched_summary\": \"e.g. GenAI Assignment 1, Stats Quiz 2\"\n}\n\nMatching rules, in order:\n1. If the message means \"everything\" (e.g. \"all done\", \"everything submitted\",\n   \"finished all of it\"), include the row_number of every pending task in\n   the list above.\n2. If the message specifies a task TYPE only (e.g. \"all assignments done\",\n   \"finished my quizzes\", \"all projects submitted\"), include the row_number\n   of every pending task whose Assigned Task matches that type — ignore\n   tasks of other types even if pending.\n3. If the message names a specific course or task (e.g. \"submitted the\n   genai one\"), match by name as before. If it matches more than one\n   pending task ambiguously, return intent \"unclear\" instead and ask which.\n4. If the message gives no name or type at all (e.g. just \"submitted\" or\n   \"done\"), include only the single soonest-due pending task's row_number.\n\nFor query, return:\n{\n  \"intent\": \"query\",\n  \"reply_text\": \"a natural, WhatsApp-style answer based on the pending tasks\n                  list above\"\n}\n\nFor unclear, return:\n{\n  \"intent\": \"unclear\",\n  \"reply_text\": \"a short WhatsApp-style clarifying question\"\n}"
+            },
+            {
+              "content": "={{ $json.incomingMessage }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        464,
+        48
+      ],
+      "id": "47614bab-7b80-43ab-9b86-4d22006ebfff",
+      "name": "Classify intent",
+      "credentials": {
+        "openAiApi": {
+          "id": "7D0YOQNvkgodVxqP",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json.output[0].content[0].text;\n\nif (data.intent === 'new_task') {\n  return data.tasks.map(t => ({ json: { intent: 'new_task', ...t } }));\n}\n\nif (data.intent === 'submission_update') {\n  return data.matched_row_numbers.map(rowNum => ({\n    json: { intent: 'submission_update', matched_row_number: rowNum, matched_summary: data.matched_summary }\n  }));\n}\n\nreturn [{ json: data }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        48
+      ],
+      "id": "d343f1e6-5076-4b88-9973-254e0be20d00",
+      "name": "Split tasks/matches into items"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "new_task",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "cee5e05f-a42c-4504-a01b-81d5acdcf1ba"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "86047119-8547-4d21-b6ef-61f0149076fc",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "submission_update",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "22778c0f-514b-4f9a-b290-00d12792690c",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "unclear",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "1e596444-e969-48f1-be56-9f79636d69c6",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "query",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": 2
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1040,
+        16
+      ],
+      "id": "a409679c-1be4-4fc8-95c2-c77c3606ed19",
+      "name": "Route by intent"
+    },
+    {
+      "parameters": {
+        "jsCode": "const first = $('Split tasks/matches into items').first().json;\nreturn [{ json: { intent: 'submission_update', matched_summary: first.matched_summary } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        -48
+      ],
+      "id": "a9d0f990-4b8b-4bf2-80b2-ec19360fcb74",
+      "name": "Collapse submission summary"
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=YOUR_WHATSAPP_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "+1 555 010 0100",
+        "textBody": "={{ $('Split tasks/matches into items').item.json.intent === 'new_task'\n   ? `Logged: ${$('Split tasks/matches into items').item.json.course_name} ${$('Split tasks/matches into items').item.json.assigned_task}, due ${DateTime.fromISO($('Split tasks/matches into items').item.json.date).setZone('Asia/Karachi').toFormat(\"EEE, dd LLL yyyy 'at' hh:mm a\")}`\n  : `Marked ${$('Collapse submission summary').item.json.matched_summary} as submitted.`",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        1664,
+        -224
+      ],
+      "id": "be3984d2-46b8-4a6c-a97e-0f4d753a6418",
+      "name": "Confirm task logged/submitted",
+      "webhookId": "508de727-fb21-417d-acbd-540ba28f8426",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "rZbvIBKwnu1iVVqD",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const triggerData = $('WhatsApp Trigger').first().json;\n\n// Skip status callbacks (delivered/read receipts) — only process real incoming messages\nif (!triggerData.messages || !triggerData.messages[0]) {\n  return []; // nothing to process, exit cleanly instead of crashing\n}\n\nconst rows = $input.all();\nconst lines = rows.map(r =>\n  `${r.json.row_number} | ${r.json['Course Name']} | ${r.json['Assigned Task']} | ${r.json['Due Date']}`\n);\nreturn [{ json: {\n  pendingTasksAsText: lines.length ? lines.join('\\n') : 'None',\n  incomingMessage: triggerData.messages[0].text.body\n}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        48
+      ],
+      "id": "0205ab75-05e9-4059-b6cd-a507e2265961",
+      "name": "Build Context for LLM"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Deadline Tracker",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $json.matched_row_number }}",
+            "Submitted": "true"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Assigned Task",
+              "displayName": "Assigned Task",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Course Name",
+              "displayName": "Course Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Submitted",
+              "displayName": "Submitted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Guidelines (if any)",
+              "displayName": "Guidelines (if any)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1264,
+        -48
+      ],
+      "id": "cbf8761b-110d-4877-a149-836f33bb6463",
+      "name": "Mark Task(s) Submitted",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TtHn6Z4cS9HwiWAT",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Deadline Tracker",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Submitted",
+              "lookupValue": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        16,
+        48
+      ],
+      "id": "448629ce-787a-410f-b205-8ea0bff6a38c",
+      "name": "Fetch Pending Tasks",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TtHn6Z4cS9HwiWAT",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=YOUR_WHATSAPP_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "+1 555 010 0100",
+        "textBody": "={{ $json.reply_text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        1264,
+        336
+      ],
+      "id": "b10fdefd-7598-4e41-918f-ead07fc51b4f",
+      "name": "Answer Query",
+      "webhookId": "508de727-fb21-417d-acbd-540ba28f8426",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "rZbvIBKwnu1iVVqD",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "phoneNumberId": "=YOUR_WHATSAPP_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "+1 555 010 0100",
+        "textBody": "={{ $json.reply_text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        1264,
+        144
+      ],
+      "id": "c10e5f19-c58e-43bf-adeb-a76f4c3ee07e",
+      "name": "Request Clarification",
+      "webhookId": "508de727-fb21-417d-acbd-540ba28f8426",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "rZbvIBKwnu1iVVqD",
+          "name": "WhatsApp account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Deadline Tracker",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Assigned Task": "={{ $json.assigned_task }}",
+            "Course Name": "={{ $json.course_name }}",
+            "Guidelines (if any)": "={{ $json.guidelines }}",
+            "Submitted": "false",
+            "Due Date": "={{ DateTime.fromISO($json.date).setZone('Asia/Karachi').toFormat('dd LLL yyyy, hh:mm a') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Assigned Task",
+              "displayName": "Assigned Task",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Course Name",
+              "displayName": "Course Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Due Date",
+              "displayName": "Due Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Submitted",
+              "displayName": "Submitted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Guidelines (if any)",
+              "displayName": "Guidelines (if any)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1264,
+        -224
+      ],
+      "id": "b97d3376-1a7f-47af-816e-2b6428b62039",
+      "name": "Log New Task",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TtHn6Z4cS9HwiWAT",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "# Task Intake & Classification",
+        "height": 880,
+        "width": 2176,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -288,
+        -320
+      ],
+      "id": "4e89f77f-e97b-4860-94cc-51788feb9ec2",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        256,
+        688
+      ],
+      "id": "e73603a1-7e1a-4888-9f38-d906ccadb9d4",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Deadline Tracker",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Submitted",
+              "lookupValue": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        480,
+        688
+      ],
+      "id": "efe73c9f-ec60-468b-b29c-5ba5e9eeb1ff",
+      "name": "Get row(s) in sheet",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TtHn6Z4cS9HwiWAT",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = DateTime.now().setZone('Asia/Karachi');\n\nreturn items.filter(item => {\n  const due = DateTime.fromFormat(\n    item.json['Due Date'],\n    \"dd LLL yyyy, h:mm a\",\n    { zone: 'Asia/Karachi' }\n  );\n  if (!due.isValid) return false;\n\n  const hoursUntilDue = due.diff(now, 'hours').hours;\n  const lastSent = item.json['Last Reminder Sent'];\n\n  // Overdue: send exactly one reminder, then stop forever\n  if (hoursUntilDue < 0) {\n    return !lastSent;\n  }\n\n  // Too far out, no reminder yet\n  if (hoursUntilDue > 48) return false;\n\n  const requiredIntervalHours = hoursUntilDue <= 24 ? 7 : 24;\n\n  if (!lastSent) return true;\n\n  const lastSentDate = DateTime.fromFormat(\n    lastSent,\n    \"dd LLL yyyy, h:mm a\",\n    { zone: 'Asia/Karachi' }\n  );\n\n  // Safety: if Last Reminder Sent is malformed, treat as never-sent rather than silently blocking forever\n  if (!lastSentDate.isValid) return true;\n\n  const hoursSinceLast = now.diff(lastSentDate, 'hours').hours;\n  return hoursSinceLast >= requiredIntervalHours;\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        688
+      ],
+      "id": "3238efc6-3607-4e8a-97ea-ac20c1da29af",
+      "name": "Decide who gets reminded",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Deadline Tracker",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "row_number": "={{ $('Get row(s) in sheet').item.json.row_number }}",
+            "Last Reminder Sent": "={{ DateTime.now().setZone('Asia/Karachi').toFormat(\"dd LLL yyyy, hh:mm a\") }}"
+          },
+          "matchingColumns": [
+            "row_number"
+          ],
+          "schema": [
+            {
+              "id": "Assigned Task",
+              "displayName": "Assigned Task",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Course Name",
+              "displayName": "Course Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Due Date",
+              "displayName": "Due Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Submitted",
+              "displayName": "Submitted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Guidelines (if any)",
+              "displayName": "Guidelines (if any)",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last Reminder Sent",
+              "displayName": "Last Reminder Sent",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1152,
+        688
+      ],
+      "id": "440bb399-8160-4ae5-b751-4fd7e5a6dfe3",
+      "name": "Update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TtHn6Z4cS9HwiWAT",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "# Deadline Reminder Scheduler",
+        "height": 256,
+        "width": 1440,
+        "color": "#2A4724"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        32,
+        624
+      ],
+      "id": "ba0fbf40-d3ba-4b06-831a-71915610293a",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "YOUR_WHATSAPP_PHONE_NUMBER_ID",
+        "recipientPhoneNumber": "+1 555 010 0100",
+        "template": "deadline_reminder|en",
+        "components": {
+          "component": [
+            {
+              "bodyParameters": {
+                "parameter": [
+                  {
+                    "text": "={{ $('Get row(s) in sheet').item.json['Assigned Task'] }}"
+                  },
+                  {
+                    "text": "={{ $('Get row(s) in sheet').item.json['Course Name'] }}"
+                  },
+                  {
+                    "text": "={{ $('Get row(s) in sheet').item.json['Due Date'] }}"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1.1,
+      "position": [
+        928,
+        688
+      ],
+      "id": "c100becb-f21e-4ffe-bffa-64bc23def488",
+      "name": "Send Reminder on Whatsapp",
+      "webhookId": "f0149f56-9e13-45c9-8ce0-828ba8091c11",
+      "credentials": {
+        "whatsAppApi": {
+          "id": "rZbvIBKwnu1iVVqD",
+          "name": "WhatsApp account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "WhatsApp Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Pending Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify intent": {
+      "main": [
+        [
+          {
+            "node": "Split tasks/matches into items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split tasks/matches into items": {
+      "main": [
+        [
+          {
+            "node": "Route by intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by intent": {
+      "main": [
+        [
+          {
+            "node": "Log New Task",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Task(s) Submitted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Request Clarification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Answer Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collapse submission summary": {
+      "main": [
+        [
+          {
+            "node": "Confirm task logged/submitted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Context for LLM": {
+      "main": [
+        [
+          {
+            "node": "Classify intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Task(s) Submitted": {
+      "main": [
+        [
+          {
+            "node": "Collapse submission summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Pending Tasks": {
+      "main": [
+        [
+          {
+            "node": "Build Context for LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log New Task": {
+      "main": [
+        [
+          {
+            "node": "Confirm task logged/submitted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Decide who gets reminded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide who gets reminded": {
+      "main": [
+        [
+          {
+            "node": "Send Reminder on Whatsapp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reminder on Whatsapp": {
+      "main": [
+        [
+          {
+            "node": "Update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "9c095e8c-be0e-4e55-a12b-6dcc1c0bbe99",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bc41e6a8d9dcf29bc0a5f1fd9e2fc3f789d3e76d29000d52c49980628e061fea"
+  },
+  "nodeGroups": [],
+  "id": "nx5cD08ObYtcyYrx",
+  "tags": []
+}
